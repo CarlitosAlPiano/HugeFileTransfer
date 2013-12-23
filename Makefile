@@ -1,14 +1,14 @@
 C++ = g++
 
 ifndef os
-   os = LINUX
+   os = OSX
 endif
 
 ifndef arch
-   arch = IA32
+   arch = POWERPC
 endif
 
-CCFLAGS = -Wall -D$(os) -I../src -finline-functions -O3
+CCFLAGS = -Wall -D$(os) -Iudt4/src -finline-functions -O3
 
 ifeq ($(arch), IA32)
    CCFLAGS += -DIA32 #-mcpu=pentiumpro -march=pentiumpro -mmmx -msse
@@ -26,7 +26,7 @@ ifeq ($(arch), SPARC)
    CCFLAGS += -DSPARC
 endif
 
-LDFLAGS = -L../src -ludt -lstdc++ -lpthread -lm
+LDFLAGS = -Ludt4/src -ludt -lstdc++ -lpthread -lm
 
 ifeq ($(os), UNIX)
    LDFLAGS += -lsocket
@@ -38,22 +38,16 @@ endif
 
 DIR = $(shell pwd)
 
-APP = appserver appclient sendfile recvfile test
+APP = server client
 
 all: $(APP) install
 
 %.o: %.cpp
 	$(C++) $(CCFLAGS) $< -c
 
-appserver: appserver.o
+server: server.o
 	$(C++) $^ -o $@ $(LDFLAGS)
-appclient: appclient.o
-	$(C++) $^ -o $@ $(LDFLAGS)
-sendfile: sendfile.o
-	$(C++) $^ -o $@ $(LDFLAGS)
-recvfile: recvfile.o
-	$(C++) $^ -o $@ $(LDFLAGS)
-test: test.o
+client: client.o
 	$(C++) $^ -o $@ $(LDFLAGS)
 
 clean:
@@ -61,5 +55,5 @@ clean:
 
 install:
 	export PATH=$(DIR):$$PATH
-	export DYLD_LIBRARY_PATH=$(DIR)/../src:$$DYLD_LIBRARY_PATH
+	export DYLD_LIBRARY_PATH=$(DIR)/udt4/src:$$DYLD_LIBRARY_PATH
 	rm -f *.o
