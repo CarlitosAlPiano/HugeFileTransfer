@@ -1,2 +1,26 @@
 
 *.txt
+
+*.pdb
+
+*.metagen
+
+*.exp
+
+*.bsc
+
+*.ilk
+
+*.sdf
+
+*.obj
+
+*.log
+
+*.tlog
+
+*.ipch
+
+*.sbr
+
+*.idb

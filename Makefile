@@ -45,9 +45,9 @@ all: $(APP) install
 %.o: %.cpp
 	$(C++) $(CCFLAGS) $< -c
 
-server: server.o
+server: server.o common.o
 	$(C++) $^ -o $@ $(LDFLAGS)
-client: client.o
+client: client.o common.o
 	$(C++) $^ -o $@ $(LDFLAGS)
 
 clean:

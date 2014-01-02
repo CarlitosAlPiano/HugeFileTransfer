@@ -1,54 +1,22 @@
-#include "common.h"
-#include <boost/uuid/uuid_generators.hpp>
+#include "client.h"
 
-#define DEF_UUID_FILENAME   (char*)"user.uuid"
+using namespace HFT;
 
-using namespace std;
+bool HFTClient::ini(bool modeIsUpload, string serverIp, string serverPort, string clientFileName, string serverFileName, string uuidFileName) {
+    // Inicializa el cliente, devolviendo true si todo fue correcto
+    this->modeIsUpload = modeIsUpload;
+    this->serverIp = serverIp;
+    this->serverPort = serverPort;
+    this->clientFileName = clientFileName;
+    this->serverFileName = serverFileName;
 
-bool modeIsUpload, isServerFileNameValid;
-char *serverIp, *serverPort;
-string clientFileName, serverFileName, fileLastModifyDate;
-char uuid[SIZE_UUID];
-int64_t fileSize, fileOffset;
-
-void getUUID(char* uuidFileName) {
-    boost::uuids::uuid u = boost::uuids::nil_generator()();
-    ifstream ifsUuid(uuidFileName, ios::in|ios::binary);
-    if (ifsUuid.is_open()) {
-        ifsUuid >> u;
-        ifsUuid.close();
-        cout << "Leído el siguiente UUID: " << u << endl;
-    } else {
-        cout << "No se encontró un UUID para este usuario. Se procederá a generar uno aleatoriamente." << endl;
+    if (atoi(serverPort.c_str()) <= 0) {
+        error("El puerto del servidor debe ser un numero mayor que 0.");
+        return false;
     }
-    
-    if (u.is_nil()) {
-        u = boost::uuids::random_generator()();
-        ofstream ofsUuid(uuidFileName, ios::out|ios::binary|ios::trunc);
-        if (ofsUuid.is_open()) {
-            ofsUuid << u;
-            ofsUuid.close();
-            cout << "Creado el UUID: " << u << endl;
-        } else {
-            error("No se pudo salvar el UUID creado para este usuario en el archivo '" + string(uuidFileName) + "'.\n\t¿Está el archivo abierto o no tiene derechos para escribir en este directorio?");
-        }
-    }
-    memcpy(uuid, &u, SIZE_UUID);
-}
 
-void getArgs(int argc, char* argv[]) {
-    if (!((argc==6) || (argc==7))) {
-        error("Uso: client subir/descargar(1/0) IPservidor PuertoServidor ArchivoLocal ArchivoRemoto.");
-    }
-    modeIsUpload = (strcmp(argv[1], "1") == 0);
-    serverIp = argv[2];
-    if (atoi(argv[3]) <= 0) {
-        error("El puerto del servidor debe ser un número mayor que 0.");
-    }
-    serverPort = argv[3];
-    clientFileName = string(argv[4]);
-    ifstream ifs(clientFileName, ios::in|ios::binary);
-    if (ifs.is_open()) {
+    ifstream ifs(clientFileName.c_str(), ios::in|ios::binary);
+    if (ifs.is_open()) { // Obtengo los parametros del archivo local (tamaño, fecha de modificacion, uuid...)
         ifs.seekg(0, ios::end);
         fileSize = ifs.tellg();
         ifs.close();
@@ -56,91 +24,163 @@ void getArgs(int argc, char* argv[]) {
         struct stat attrib;
         if (stat(clientFileName.c_str(), &attrib) != 0) {
             error("La fecha de modificación del archivo a enviar no ha podido ser leída.");
+            return false;
         }
-        fileLastModifyDate = string(asctime(gmtime(&(attrib.st_mtime))));
+        fileLastModifyDate = string(asctime(gmtime(&(attrib.st_mtime)))); // Convierto la fecha a string
 #else
         FILETIME lastWriteTime;
-        HANDLE fh = CreateFile(clientFileName.c_str(), GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        if (fh == INVALID_HANDLE_VALUE) {
-            error("Imposible abrir el archivo local para obtener su fecha de modificación.");
+        HANDLE fh = CreateFile(str2wstr(clientFileName).c_str(), GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (fh == INVALID_HANDLE_VALUE) { // Abro el archivo
+            error("Imposible abrir el archivo local ('" + clientFileName + "') para obtener su fecha de modificacion.");
+            return false;
         }
-        if (!GetFileTime(fh, NULL, NULL, &lastWriteTime)) {
-            error("La fecha de modificación del archivo a enviar no ha podido ser leída.");
+        if (!GetFileTime(fh, NULL, NULL, &lastWriteTime)) { // Obtengo la fecha de modificacion
+            error("La fecha de modificacion del archivo a enviar no ha podido ser leida.");
+            return false;
         }
         CloseHandle(fh);
-        fileLastModifyDate = WinFileTimeToString(lastWriteTime);
+        fileLastModifyDate = WinFileTimeToString(lastWriteTime); // Convierto la fecha a string
 #endif
-        fileLastModifyDate.pop_back();  // Get rid of trailing '\n'
+        fileLastModifyDate = fileLastModifyDate.substr(0, fileLastModifyDate.size()-1); //.pop_back(); // Borro el ultimo caracter ('\n')
     } else {
         error("El archivo local no existe o no se puede leer.");
+        return false;
     }
-    serverFileName = string(argv[5]);
-    if (argc == 6) {
-        getUUID(DEF_UUID_FILENAME);
+
+    // Obtengo el UUID del cliente
+    if (uuidFileName.empty()) {
+        if (!getUUID(DEF_UUID_FILENAME)) return false;
     } else {
-        getUUID(argv[6]);
+        if (!getUUID((char*)uuidFileName.c_str())) return false;
     }
-    
-    info("El archivo '" + clientFileName + "' ocupa " + boost::lexical_cast<string>(fileSize) + "B y fue modificado por última vez el " + fileLastModifyDate + ".");
+
+    info("El archivo '" + clientFileName + "' ocupa " + boost::lexical_cast<string>(fileSize) + " bytes y fue modificado por ultima vez el " + fileLastModifyDate + ".");
+    return true;
 }
 
-void connectToServer(UDTSOCKET& sock) {
-    addrinfo addrAux, *addrServer;
+bool HFTClient::iniFromArgs(int argc, char* argv[]) {
+    // Inicializa el cliente a partir de argv, devolviendo true si todo fue correcto
+    if (argc == 6) {
+        return ini((strcmp(argv[1], "1") == 0), string(argv[2]), string(argv[3]), string(argv[4]), string(argv[5]));
+    } else if (argc == 7) {
+        return ini((strcmp(argv[1], "1") == 0), string(argv[2]), string(argv[3]), string(argv[4]), string(argv[5]), string(argv[6]));
+    } else {
+        error("Uso: client subir/descargar(1/0) IPservidor PuertoServidor ArchivoLocal ArchivoRemoto [ArchivoUUID].");
+        return false;
+    }
+}
+
+bool HFTClient::isTx() {
+    // Devuelve true si el cliente esta transmitiendo; false en caso contrario
+    return modeIsUpload;
+}
+
+bool HFTClient::getUUID(char* uuidFileName) {
+    // Leo el UUID del cliente guardado en el archivo uuidFileName
+    boost::uuids::uuid u = boost::uuids::nil_generator()();
+    ifstream ifsUuid(uuidFileName, ios::in | ios::binary);
+    if (ifsUuid.is_open()) { // Si existe el archivo, leo el UUID
+        ifsUuid >> u;
+        ifsUuid.close();
+        info("Leido el siguiente UUID: " + to_string(u));
+    } else {
+        info("No se encontro un UUID para este usuario. Se procedera a generar uno aleatoriamente.");
+    }
+
+    if (u.is_nil()) { // Si no he leido un UUID o el que he leido no era valido, genero uno aleatoriamente
+        u = boost::uuids::random_generator()();
+        ofstream ofsUuid(uuidFileName, ios::out | ios::binary | ios::trunc);
+        if (ofsUuid.is_open()) { // Guardo en el archivo uuidFileName el UUID que acabo de generar
+            ofsUuid << u;
+            ofsUuid.close();
+            info("Creado el UUID: " + to_string(u));
+        } else {
+            error("No se pudo salvar el UUID creado para este usuario en el archivo '" + string(uuidFileName) + "'.\n\t¿Esta el archivo abierto o no tiene derechos para escribir en este directorio?");
+            return false;
+        }
+    }
     
-    memset(&addrAux, 0, sizeof(struct addrinfo));
+    memcpy(uuid, &u, SIZE_UUID); // Obtengo la representacion en chars del UUID
+    return true;
+}
+
+bool HFTClient::connectToServer(UDTSOCKET& sock) {
+    // Conecta el socket sock al servidor, leyendo la direccion de las variables serverIp y serverPort
+    addrinfo addrAux, *addrServer;
+
+    memset(&addrAux, 0, sizeof(struct addrinfo)); // Inicializo el socket como requiere la libreria UDT
     addrAux.ai_flags = AI_PASSIVE;
     addrAux.ai_family = AF_INET;
     addrAux.ai_socktype = SOCK_STREAM;
-    
+
     sock = UDT::socket(addrAux.ai_family, addrAux.ai_socktype, addrAux.ai_protocol);
-    
-    if (0 != getaddrinfo(serverIp, serverPort, &addrAux, &addrServer)) {
-        error("Dirección del servidor incorrecta (" + string(serverIp) + ":" + string(serverPort) + ").");
+
+    if (0 != getaddrinfo(serverIp.c_str(), serverPort.c_str(), &addrAux, &addrServer)) { // Compruebo que la direccion del servidor sea valida
+        error("Direccion del servidor incorrecta (" + serverIp + ":" + serverPort + ").");
+        return false;
     }
-    
-    if (UDT::ERROR == UDT::connect(sock, addrServer->ai_addr, addrServer->ai_addrlen)) {
+    if (UDT::ERROR == UDT::connect(sock, addrServer->ai_addr, addrServer->ai_addrlen)) { // Y conecto el socket al servidor
         errorWithUDTmsg("No se pudo conectar con el servidor");
+        return false;
     }
-    
+
     freeaddrinfo(addrServer);
+    return true;
 }
 
-int main(int argc, char* argv[]) {
-    getArgs(argc, argv);
+int HFTClient::run() {
     UDTUpDown _udt_;    // Automatically start up and clean up UDT module
-    UDTSOCKET sock;
-    connectToServer(sock);
-    
+    if (!connectToServer(aSock)) return -1;
+	_udt_.clean = true;
 #ifndef WIN32
-    pthread_t monitorThread;
-    pthread_create(&monitorThread, NULL, monitorTx, new UDTSOCKET(sock));
-    pthread_detach(monitorThread);
+	pthread_t monitorThread;
+	pthread_create(&monitorThread, NULL, monitor, this);
+	pthread_detach(monitorThread);
 #else
-    CreateThread(NULL, 0, monitorTx, new UDTSOCKET(sock), 0, NULL);
+	CreateThread(NULL, 0, monitor, this, 0, NULL);
 #endif
-    if(!send(sock, &modeIsUpload, sizeof(bool), " el modo de operación")) return -1;
+    // Gestiono la operacion que el cliente quiera realizar siguiendo el protocolo establecido
+    if (!send(aSock, &modeIsUpload, sizeof(bool), " el modo de operacion")) return -1;
     if (modeIsUpload) {
-        if(!send(sock, uuid, SIZE_UUID, " el UUID del cliente")) return -1;
-        if(!sendString(sock, clientFileName, " el nombre del archivo en el cliente")) return -1;
-        if(!send(sock, &fileSize, sizeof(int64_t), " el tamaño del archivo en el cliente")) return -1;
-        if(!sendString(sock, fileLastModifyDate, " la fecha de modificación del archivo en el cliente")) return -1;
-        if(!sendString(sock, serverFileName, " el nombre del archivo en el servidor")) return -1;
-        
-        if(!receive(sock, &isServerFileNameValid, sizeof(bool), " la validez del nombre de archivo en el servidor")) return -1;
+        if (!send(aSock, uuid, SIZE_UUID, " el UUID del cliente")) return -1;
+        if (!sendString(aSock, clientFileName, " el nombre del archivo en el cliente")) return -1;
+        if (!send(aSock, &fileSize, sizeof(int64_t), " el tamaño del archivo en el cliente")) return -1;
+        if (!sendString(aSock, fileLastModifyDate, " la fecha de modificacion del archivo en el cliente")) return -1;
+        if (!sendString(aSock, serverFileName, " el nombre del archivo en el servidor")) return -1;
+
+        if (!receive(aSock, &isServerFileNameValid, sizeof(bool), " la validez del nombre de archivo en el servidor")) return -1;
         if (!isServerFileNameValid) {
             error("El nombre de archivo en el servidor que ha especificado ya existe. Por favor, pruebe con otro nombre.");
+            return -1;
         }
-        if(!receive(sock, &fileOffset, sizeof(int64_t), " el progreso de archivo ya subido")) return -1;
-        info("Se va a proceder a subir el archivo '" + clientFileName + "' -> '" + serverFileName + "', que lleva ya " + boost::lexical_cast<string>(fileOffset) + " bytes subidos (quedan " + boost::lexical_cast<string>(fileSize-fileOffset) + " bytes).");
+        if (!receive(aSock, &fileOffset, sizeof(int64_t), " el progreso de archivo ya subido")) return -1;
+        info("Se va a proceder a subir el archivo '" + clientFileName + "' -> '" + serverFileName + "', que lleva ya " + boost::lexical_cast<string>(fileOffset) + " bytes subidos (quedan " + boost::lexical_cast<string>(fileSize - fileOffset) + " bytes).");
 
-        fstream fileStream(clientFileName, ios::in|ios::binary);
-        if (UDT::ERROR == UDT::sendfile(sock, fileStream, fileOffset, fileSize-fileOffset)) {
-            errorWithUDTmsg("No se pudo completar la subida del archivo '"+ clientFileName + "'");
+		fileStream.open(clientFileName.c_str(), ios::in | ios::binary);
+        while (mon == NULL) pause(1);
+        mon->start(this); // Monitoreo y comienzo la subida del archivo
+        if (UDT::ERROR == UDT::sendfile(aSock, fileStream, fileOffset, fileSize - fileOffset, 1408)) {
+            mon->stop();
+            errorWithUDTmsg("No se pudo completar la subida del archivo '" + clientFileName + "'");
+            return -1;
         }
         fileStream.close();
-        cout << endl << "¡Enhorabuena! El archivo '" << serverFileName << "' se ha subido correctamente." << endl;;
+		// El envio suele ir unos 12MB por delante que la recepcion -> Esperar a recibir un ACK del servidor previene que cierre el socket antes de que...
+		receive(aSock, &ackTransfer, sizeof(bool), " la confirmacion de recepcion del archivo en el servidor"); // ... terminen de llegarle esos 12 MB
+		mon->stop();
+		info("¡Enhorabuena! El archivo '" + serverFileName + "' se ha subido correctamente.");
     }
-    
-    UDT::close(sock);
+
+    UDT::close(aSock); // Cierro el socket
     return 0;
 }
+	
+#ifndef WIN32
+int main(int argc, char* argv[]) {
+	HFTClient* client = new HFTClient(argc, argv);
+	int ret = client->run();
+	delete client;
+
+	return ret;
+}
+#endif
