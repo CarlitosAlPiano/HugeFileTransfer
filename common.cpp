@@ -12,7 +12,7 @@ namespace HFT {
 	Monitor::Monitor() : running(false), isTx(false), KBps(0.0), remaining(INFINITY), currentSize(0), totalSize(0), fStream(NULL) {}
 
 	Monitor::~Monitor() {
-		stop();
+		// stop();
 		cout << endl;
 	}
 
@@ -143,6 +143,37 @@ namespace HFT {
 		return &aSock;
 	}
 
+	bool HFTEntity::findOptimumParams() {
+		const int bufSize = 1024000, n = 7;
+		char buf[bufSize];
+		int mss[n] = {1052, 1500, 3000, 4500, 6000, 7500, 9000}, minMss;
+		double minTime = INFINITY, currTime;
+		clock_t tStart;
+
+		for (int i = 0; i < n; i++) {
+			UDT::setsockopt(aSock, 0, UDT_MSS, new int(mss[i]), sizeof(int));
+			tStart = clock();
+			if (modeIsUpload) {
+				if (!send(aSock, buf, bufSize, " el test numero " + boost::lexical_cast<string>(i + 1))) {
+					return false;
+				}
+			} else {
+				if (!receive(aSock, buf, bufSize, " el test numero " + boost::lexical_cast<string>(i + 1))) {
+					return false;
+				}
+			}
+
+			if (minTime > (currTime = double(clock() - tStart) / CLOCKS_PER_SEC)) {
+				minMss = mss[i];
+				minTime = currTime;
+			}
+			info("Test " + boost::lexical_cast<string>(i + 1) + " acabado! Tiempo: " + boost::lexical_cast<string>(currTime) + "s");
+		}
+
+		UDT::setsockopt(aSock, 0, UDT_MSS, new int(minMss), sizeof(int));
+		return true;
+	}
+
     void info(string msg) { // Muestra un mensaje de 'info'
 		cout << "INFO: " << msg << endl;
         HFTMsg::q.push("INFO: " + msg);
@@ -158,9 +189,14 @@ namespace HFT {
 	}
 
 	bool send(const UDTSOCKET& sock, void* buf, int len, string tag) { // Envía cualquier informacion por el socket
-		if (UDT::ERROR == UDT::send(sock, (char*)buf, len, 0)) {
-			errorWithUDTmsg("No se pudo enviar" + tag); // En caso de error, tag indica lo que se intentaba enviar (ej: el UUID)
-			return false;
+		int sent = 0, totalSent = 0;
+
+		while (totalSent < len) {
+			if (UDT::ERROR == (sent = UDT::send(sock, (char*)buf+totalSent, len-totalSent, 0))) {
+				errorWithUDTmsg("No se pudo enviar" + tag); // En caso de error, tag indica lo que se intentaba enviar (ej: el UUID)
+				return false;
+			}
+			totalSent += sent;
 		}
 
 		return true;
@@ -176,9 +212,14 @@ namespace HFT {
 	}
 
 	bool receive(const UDTSOCKET& sock, void* buf, int len, string tag) {  // Recibe cualquier informacion por el socket
-		if (UDT::ERROR == UDT::recv(sock, (char*)buf, len, 0)) {
-			errorWithUDTmsg("No se pudo recibir" + tag);    // En caso de error, tag indica lo que se intentaba recibir (ej: el UUID)
-			return false;
+		int recv = 0, totalRecv = 0;
+
+		while (totalRecv < len) {
+			if (UDT::ERROR == (recv = UDT::recv(sock, (char*)buf+totalRecv, len-totalRecv, 0))) {
+				errorWithUDTmsg("No se pudo recibir" + tag);    // En caso de error, tag indica lo que se intentaba recibir (ej: el UUID)
+				return false;
+			}
+			totalRecv += recv;
 		}
 
 		return true;
@@ -259,7 +300,7 @@ namespace HFT {
 	{   // Monitorea la transmision/recepcion del archivo
 		HFTEntity* entity = (HFTEntity*)ntty;
 
-		entity->mon = new Monitor(); //entity->getFileSize(), entity->getFileStream(), entity->isTx());
+		entity->mon = new Monitor();
 		entity->mon->run();
 		delete(entity->mon);
 		entity->mon = NULL;

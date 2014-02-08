@@ -44,8 +44,7 @@ bool HFTServer::configurePassiveSocket(UDTSOCKET& pSock) {
     }
 
 #ifdef WIN32
-    int mss = 1052; // Windows UDP issue: For better performance, modify HKLM\System\CurrentControlSet\Services\Afd\Parameters\FastSendDatagramThreshold
-    UDT::setsockopt(pSock, 0, UDT_MSS, &mss, sizeof(int));
+	UDT::setsockopt(pSock, 0, UDT_MSS, new int(1052), sizeof(int)); // Windows UDP issue: For better performance, modify HKLM\System\CurrentControlSet\Services\Afd\Parameters\FastSendDatagramThreshold
 #endif
 
     if (UDT::ERROR == UDT::bind(pSock, addrServer->ai_addr, addrServer->ai_addrlen)) { // Enlazo el socket pasivo al puerto serverPort
@@ -157,7 +156,6 @@ void HFTServer::handleClient(UDTSOCKET& sock) {
         }
         if (!send(sock, &fileOffset, sizeof(int64_t), " el progreso de archivo ya subido")) return;
 
-        int64_t offs = 0;
         if (fileOffset == 0) {
             remove(serverTempFileName.c_str());                                 // Me aseguro de que no exista un archivo temporal con el mismo nombre
             fileStream.open(serverUsrFileName.c_str(), ios::out | ios::binary); // Abro el archivo USER y guardo los datos relacionados con esta subida
@@ -168,14 +166,33 @@ void HFTServer::handleClient(UDTSOCKET& sock) {
         fileStream.open(serverTempFileName.c_str(), ios::out | ios::binary | ios::app);
         while (mon == NULL) pause(1);
         mon->start(this); // Monitoreo y comienzo la subida del archivo
+        
+        /*int64_t offs = 0;
         if (UDT::ERROR == UDT::recvfile(sock, fileStream, offs, fileSize - fileOffset)) {
             mon->stop();
             errorWithUDTmsg("No se pudo completar la subida del archivo '" + clientFileName + "'");
             return;
+        }*/
+        
+        const int LEN=1400;
+        char buf[LEN];
+        int readLen;
+        while (fileStream.good()) {
+            readLen = UDT::recv(sock, buf, LEN, 0);
+            if (readLen == UDT::ERROR) {
+                break;
+            }
+            fileStream.write(buf, readLen);
         }
+        ackTransfer = fileStream.eof();
+        fileStream.flush();
         fileStream.close();
 		mon->stop();
-		ackTransfer = true;
+        
+		if (!ackTransfer) {
+            errorWithUDTmsg("No se pudo completar la subida del archivo '" + clientFileName + "'");
+            return;
+        }
 		// El envio suele ir unos 12MB por delante que la recepcion -> Esperar a recibir un ACK del servidor previene que cierre el socket antes de que...
         send(sock, &ackTransfer, sizeof(bool), " la confirmacion de recepcion del archivo en el servidor"); // ... terminen de llegarle esos 12 MB
         // Por ultimo, borro el archivo '.usr' y renombro el '.temp' al nombre deseado
@@ -200,7 +217,14 @@ DWORD WINAPI HFTServer::threadHandleClient(LPVOID srvr)
 #endif
 {
     HFTServer* server = (HFTServer*)srvr;
+
+	info("Ejecutando test para encontrar el MSS óptimo!");
+	server->findOptimumParams();
+
     UDTSOCKET* sock = new UDTSOCKET(server->aSock);
+	int mss;
+	UDT::getsockopt(server->aSock, 0, UDT_MSS, &mss, sizeof(int));
+	UDT::setsockopt(*sock, 0, UDT_MSS, &mss, sizeof(int));
     server->handleClient(*sock);
     delete sock;
     return 0;

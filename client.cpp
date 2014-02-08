@@ -125,6 +125,10 @@ bool HFTClient::connectToServer(UDTSOCKET& sock) {
     }
 
     freeaddrinfo(addrServer);
+
+	info("Ejecutando test para encontrar el MSS óptimo!");
+	findOptimumParams();
+
     return true;
 }
 
@@ -159,10 +163,31 @@ int HFTClient::run() {
 		fileStream.open(clientFileName.c_str(), ios::in | ios::binary);
         while (mon == NULL) pause(1);
         mon->start(this); // Monitoreo y comienzo la subida del archivo
-        if (UDT::ERROR == UDT::sendfile(aSock, fileStream, fileOffset, fileSize - fileOffset, 1408)) {
+        
+        /*if (UDT::ERROR == UDT::sendfile(aSock, fileStream, fileOffset, fileSize - fileOffset, 1408)) {
             mon->stop();
             errorWithUDTmsg("No se pudo completar la subida del archivo '" + clientFileName + "'");
             return -1;
+        }*/
+        
+        const int LEN=1400;
+        char buf[LEN];
+        int alreadySent, sentLen, bufRead;
+        fileStream.seekg(fileOffset);
+        while (!fileStream.eof()) {
+            fileStream.read(buf, LEN);
+            alreadySent = 0;
+            bufRead = fileStream.gcount();
+            while (alreadySent < bufRead) {
+                sentLen = UDT::send(aSock, buf+alreadySent, bufRead-alreadySent, 0);
+                if (sentLen == UDT::ERROR) {
+                    fileStream.close();
+                    mon->stop();
+                    errorWithUDTmsg("No se pudo completar la subida del archivo '" + clientFileName + "'");
+                    return -1;
+                }
+                alreadySent += sentLen;
+            }
         }
         fileStream.close();
 		// El envio suele ir unos 12MB por delante que la recepcion -> Esperar a recibir un ACK del servidor previene que cierre el socket antes de que...

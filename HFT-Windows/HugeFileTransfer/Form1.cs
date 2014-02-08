@@ -12,8 +12,8 @@ using HFT;
 namespace HugeFileTransfer {
     public partial class Form1 : Form {
         private HFTClientWrapper client;
-        private const String serverIp = "5.231.82.25";
-        //private const String serverIp = "192.168.0.7";
+        private const String serverIp = "212.85.36.40";
+        // private const String serverIp = "192.168.0.7";
         private const String serverPort = "8888";
 
         public Form1() {

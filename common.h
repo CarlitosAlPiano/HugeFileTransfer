@@ -18,12 +18,12 @@
 	#endif
 	#include <winsock2.h>
 	#include <ws2tcpip.h>
-	#include <time.h>
 #endif
 #include <iostream>
 #include <fstream>
 #include <cstdlib>
 #include <cstdio>
+#include <time.h>
 #include <iomanip>
 #include <queue>
 #include <cmath>
@@ -116,6 +116,7 @@ namespace HFT {
         int64_t getFileOffset();
         fstream* getFileStream();
         UDTSOCKET* getSocket();
+		bool findOptimumParams();
 		virtual bool isTx() = 0;
 		virtual int run() = 0;
 	};
