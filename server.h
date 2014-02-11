@@ -6,21 +6,29 @@
 namespace HFT {
     class HFTServer : public HFTEntity {
 	private:
-		UDTSOCKET pSock;
-
-		bool iniFromArgs(int argc, char* argv[]);
-		bool configurePassiveSocket(UDTSOCKET& pSock);
 		int64_t isFileValid(boost::uuids::uuid u, string remoteFileName, int64_t fileSize, string fileLastModifyDate, string localFileName, string tempFileName, string usrFileName);
-		void handleClient(UDTSOCKET& sock);
-#ifndef WIN32
-		static void* threadHandleClient(void* srvr);
-#else
-		static DWORD WINAPI threadHandleClient(LPVOID srvr);
-#endif
 	public:
-		HFTServer(int argc, char* argv[]) { if (!iniFromArgs(argc, argv)) serverIp = DEF_SRV_PORT; }
+		HFTServer(UDTSOCKET sock) { this->aSock = sock; }
 		virtual ~HFTServer() {}
 		bool isTx();
+		int run();
+	};
+
+    class HFTServerHandler {
+	private:
+		UDTSOCKET pSock;
+        string port;
+
+		bool iniFromArgs(int argc, char* argv[]);
+		bool configurePassiveSocket();
+#ifndef WIN32
+		static void* threadHandleClient(void* sock);
+#else
+		static DWORD WINAPI threadHandleClient(LPVOID sock);
+#endif
+	public:
+		HFTServerHandler(int argc, char* argv[]) { if (!iniFromArgs(argc, argv)) port = DEF_SRV_PORT; }
+		virtual ~HFTServerHandler() {}
 		int run();
 	};
 }

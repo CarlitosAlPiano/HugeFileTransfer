@@ -16,6 +16,7 @@
 	#else
 		#define HFTClientDLL_API __declspec(dllimport) 
 	#endif
+	#include <tchar.h>
 	#include <winsock2.h>
 	#include <ws2tcpip.h>
 #endif
@@ -93,21 +94,19 @@ namespace HFT {
 	class HFTClientDLL_API HFTEntity {
 	protected:
 		bool modeIsUpload, isServerFileNameValid, ackTransfer;
-		string serverIp, serverPort;
 		char uuid[SIZE_UUID];
 		string clientFileName, serverFileName, fileLastModifyDate;
 		int64_t fileSize, fileOffset;
 		fstream fileStream;
 		UDTSOCKET aSock;
-
-		virtual bool iniFromArgs(int argc, char* argv[]) = 0;
+        static const int mssLen;
+        static int mss[];
+        int32_t mssTestBufSize;
 	public:
 		Monitor* mon;
 
-		HFTEntity() : modeIsUpload(true), isServerFileNameValid(false), ackTransfer(false), serverIp(""), serverPort(""), clientFileName(""), serverFileName(""), fileLastModifyDate(""), fileSize(0), fileOffset(0), mon(NULL) {}
+		HFTEntity() : modeIsUpload(true), isServerFileNameValid(false), ackTransfer(false), clientFileName(""), serverFileName(""), fileLastModifyDate(""), fileSize(0), fileOffset(0), mssTestBufSize(0), mon(NULL) {}
         bool isModeUpload();
-        string getServerIp();
-        string getServerPort();
         string getUUID();
         string getClientFileName();
         string getServerFileName();
@@ -116,7 +115,7 @@ namespace HFT {
         int64_t getFileOffset();
         fstream* getFileStream();
         UDTSOCKET* getSocket();
-		bool findOptimumParams();
+		bool findOptimumParams(bool isClient);
 		virtual bool isTx() = 0;
 		virtual int run() = 0;
 	};

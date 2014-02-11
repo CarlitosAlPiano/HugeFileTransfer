@@ -18,10 +18,10 @@ namespace HFT {
 		String^ fromNativeString(const string& iStr);
 	public:
 		HFTClientWrapper();
-		HFTClientWrapper(bool modeIsUpload, String^ serverIp, String^ serverPort, String^ clientFileName, String^ serverFileName, String^ uuidFileName);
+		HFTClientWrapper(bool modeIsUpload, String^ serverIp, String^ serverPort, String^ clientFileName, String^ serverFileName, Int32 mssTestBufSize, String^ uuidFileName);
 		~HFTClientWrapper();
 		!HFTClientWrapper();
-		void ini(bool modeIsUpload, String^ serverIp, String^ serverPort, String^ clientFileName, String^ serverFileName, String^ uuidFileName);
+		void ini(bool modeIsUpload, String^ serverIp, String^ serverPort, String^ clientFileName, String^ serverFileName, Int32 mssTestBufSize, String^ uuidFileName);
 		bool obtainMonitorResults();
 		double getKBps();
 		double getRemaining();

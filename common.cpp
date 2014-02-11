@@ -13,7 +13,7 @@ namespace HFT {
 
 	Monitor::~Monitor() {
 		// stop();
-		cout << endl;
+		cout << endl << "Cerrando el monitor" << endl;
 	}
 
 	void Monitor::start(HFTEntity* entity) {
@@ -97,16 +97,11 @@ namespace HFT {
 		}
 	}
     
+    const int HFTEntity::mssLen = 7;
+    int HFTEntity::mss[mssLen] = {1052, 1500, 3000, 4500, 6000, 7500, 9000};
+    
     bool HFTEntity::isModeUpload() {
         return modeIsUpload;
-    }
-    
-    string HFTEntity::getServerIp() {
-        return serverIp;
-    }
-    
-    string HFTEntity::getServerPort() {
-        return serverPort;
     }
     
     string HFTEntity::getUUID() {
@@ -143,35 +138,47 @@ namespace HFT {
 		return &aSock;
 	}
 
-	bool HFTEntity::findOptimumParams() {
-		const int bufSize = 1024000, n = 7;
-		char buf[bufSize];
-		int mss[n] = {1052, 1500, 3000, 4500, 6000, 7500, 9000}, minMss;
-		double minTime = INFINITY, currTime;
-		clock_t tStart;
+	bool HFTEntity::findOptimumParams(bool isClient) {
+        clock_t tStart, tEnd, minTime = -1;
+        int minMss = mss[mssLen-1];
+		if (mssTestBufSize <= 0) {
+			UDT::setsockopt(aSock, 0, UDT_MSS, new int(minMss), sizeof(int));
+			return true;
+		}
+		char* buf = (char*)calloc(mssTestBufSize*1024, sizeof(char));
+        
+        info("Ejecutando test para encontrar el MSS óptimo!");
+        for (int i = 0; i < mssLen; i++) {
+            UDT::setsockopt(aSock, 0, UDT_MSS, new int(mss[i]), sizeof(int));
 
-		for (int i = 0; i < n; i++) {
-			UDT::setsockopt(aSock, 0, UDT_MSS, new int(mss[i]), sizeof(int));
-			tStart = clock();
+            tStart = clock();
 			if (modeIsUpload) {
-				if (!send(aSock, buf, bufSize, " el test numero " + boost::lexical_cast<string>(i + 1))) {
+				if (!send(aSock, buf, mssTestBufSize*1024, " el test numero " + boost::lexical_cast<string>(i + 1))) {
+					free(buf);
 					return false;
 				}
 			} else {
-				if (!receive(aSock, buf, bufSize, " el test numero " + boost::lexical_cast<string>(i + 1))) {
+				if (!receive(aSock, buf, mssTestBufSize*1024, " el test numero " + boost::lexical_cast<string>(i + 1))) {
+					free(buf);
 					return false;
 				}
 			}
-
-			if (minTime > (currTime = double(clock() - tStart) / CLOCKS_PER_SEC)) {
-				minMss = mss[i];
-				minTime = currTime;
-			}
-			info("Test " + boost::lexical_cast<string>(i + 1) + " acabado! Tiempo: " + boost::lexical_cast<string>(currTime) + "s");
-		}
-
-		UDT::setsockopt(aSock, 0, UDT_MSS, new int(minMss), sizeof(int));
-		return true;
+            tEnd = clock();
+            
+			//if (isClient && (i==0 || minTime>tEnd-tStart)) {
+			if (isClient) {
+				if (i == 0 || minTime > tEnd - tStart) {
+					minTime = tEnd - tStart;
+					minMss = mss[i];
+				}
+            }
+            info("Test " + boost::lexical_cast<string>(i + 1) + " (MSS: " + boost::lexical_cast<string>(mss[i]) + "B) acabado en " + boost::lexical_cast<string>(double(tEnd-tStart)/CLOCKS_PER_SEC) + "s!");
+        }
+        
+        info("Resultado: MSS óptimo = " + boost::lexical_cast<string>(minMss) + "B!");
+        UDT::setsockopt(aSock, 0, UDT_MSS, new int(minMss), sizeof(int));
+        free(buf);
+        return true;
 	}
 
     void info(string msg) { // Muestra un mensaje de 'info'
@@ -302,8 +309,8 @@ namespace HFT {
 
 		entity->mon = new Monitor();
 		entity->mon->run();
-		delete(entity->mon);
-		entity->mon = NULL;
+		// delete(entity->mon);
+		// entity->mon = NULL;
 
 		return 0;
 	}

@@ -32,6 +32,7 @@
             this.tabOperationMode = new System.Windows.Forms.TabControl();
             this.tabUpload = new System.Windows.Forms.TabPage();
             this.grpResult = new System.Windows.Forms.GroupBox();
+            this.lstResult = new System.Windows.Forms.ListBox();
             this.tableLayoutPanel1 = new System.Windows.Forms.TableLayoutPanel();
             this.lblResProgress = new System.Windows.Forms.Label();
             this.lblHeaderProgress = new System.Windows.Forms.Label();
@@ -54,7 +55,6 @@
             this.grpServerFiles = new System.Windows.Forms.GroupBox();
             this.lstServerFiles = new System.Windows.Forms.TreeView();
             this.bgMonitor = new System.ComponentModel.BackgroundWorker();
-            this.lstResult = new System.Windows.Forms.ListBox();
             this.tabOperationMode.SuspendLayout();
             this.tabUpload.SuspendLayout();
             this.grpResult.SuspendLayout();
@@ -112,6 +112,17 @@
             this.grpResult.TabIndex = 14;
             this.grpResult.TabStop = false;
             this.grpResult.Text = "Progreso y resultado de la operación";
+            // 
+            // lstResult
+            // 
+            this.lstResult.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.lstResult.FormattingEnabled = true;
+            this.lstResult.Location = new System.Drawing.Point(6, 64);
+            this.lstResult.Name = "lstResult";
+            this.lstResult.Size = new System.Drawing.Size(557, 56);
+            this.lstResult.TabIndex = 2;
             // 
             // tableLayoutPanel1
             // 
@@ -257,7 +268,6 @@
             this.txtClientFileName.Name = "txtClientFileName";
             this.txtClientFileName.Size = new System.Drawing.Size(308, 20);
             this.txtClientFileName.TabIndex = 12;
-            this.txtClientFileName.Text = "D:/Videos/Natacion casa de campo.avi";
             // 
             // lblServerFileName
             // 
@@ -333,17 +343,6 @@
             this.bgMonitor.DoWork += new System.ComponentModel.DoWorkEventHandler(this.bgMonitor_DoWork);
             this.bgMonitor.ProgressChanged += new System.ComponentModel.ProgressChangedEventHandler(this.bgMonitor_ProgressChanged);
             // 
-            // lstResult
-            // 
-            this.lstResult.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
-            | System.Windows.Forms.AnchorStyles.Left) 
-            | System.Windows.Forms.AnchorStyles.Right)));
-            this.lstResult.FormattingEnabled = true;
-            this.lstResult.Location = new System.Drawing.Point(6, 64);
-            this.lstResult.Name = "lstResult";
-            this.lstResult.Size = new System.Drawing.Size(557, 56);
-            this.lstResult.TabIndex = 2;
-            // 
             // Form1
             // 
             this.AcceptButton = this.btnUpload;
@@ -357,6 +356,7 @@
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "HugeFileTransfer";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Form1_FormClosing);
+            this.Load += new System.EventHandler(this.Form1_Load);
             this.tabOperationMode.ResumeLayout(false);
             this.tabUpload.ResumeLayout(false);
             this.tabUpload.PerformLayout();

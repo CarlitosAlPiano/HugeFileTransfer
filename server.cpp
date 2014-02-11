@@ -2,65 +2,9 @@
 
 using namespace HFT;
 
-bool HFTServer::iniFromArgs(int argc, char* argv[]) {
-    // Inicializa el servidor (serverPort) a partir de argv, devolviendo true si todo fue correcto
-    if (argc > 2) {
-        error("Uso: server PuertoServidor.");
-        return false;
-    } else if (argc == 2) {
-        if (atoi(argv[1]) <= 0) {
-            error("El puerto del servidor debe ser un número mayor que 0.");
-            return false;
-        }
-        else {
-            serverPort = string(argv[1]);
-        }
-    } else {
-        serverPort = DEF_SRV_PORT;
-    }
-    
-    return true;
-}
-
 bool HFTServer::isTx() {
     // Devuelve true si el servidor esta transmitiendo; false en caso contrario
     return !modeIsUpload;
-}
-
-bool HFTServer::configurePassiveSocket(UDTSOCKET& pSock) {
-    // Configura el socket pasivo para que escuche en el puerto serverPort
-    addrinfo addrAux, *addrServer;
-
-    memset(&addrAux, 0, sizeof(struct addrinfo)); // Inicializo el socket como requiere la libreria UDT
-    addrAux.ai_flags = AI_PASSIVE;
-    addrAux.ai_family = AF_INET;
-    addrAux.ai_socktype = SOCK_STREAM;
-
-    pSock = UDT::socket(addrAux.ai_family, addrAux.ai_socktype, addrAux.ai_protocol);
-
-    if (0 != getaddrinfo(NULL, serverPort.c_str(), &addrAux, &addrServer)) { // Compruebo que el puerto este accesible
-        error("Puerto (" + serverPort + ") ilegal o en uso");
-        return false;
-    }
-
-#ifdef WIN32
-	UDT::setsockopt(pSock, 0, UDT_MSS, new int(1052), sizeof(int)); // Windows UDP issue: For better performance, modify HKLM\System\CurrentControlSet\Services\Afd\Parameters\FastSendDatagramThreshold
-#endif
-
-    if (UDT::ERROR == UDT::bind(pSock, addrServer->ai_addr, addrServer->ai_addrlen)) { // Enlazo el socket pasivo al puerto serverPort
-        errorWithUDTmsg("No se pudo enlazar el socket al puerto " + serverPort);
-        return false;
-    }
-
-    freeaddrinfo(addrServer);
-
-    if (UDT::ERROR == UDT::listen(pSock, BACKLOG)) { // Pongo el socket pasivo en modo escucha
-        errorWithUDTmsg("No se pudo poner el socket en modo escucha");
-        return false;
-    }
-
-    cout << "El servidor está a la escucha en el puerto " << serverPort << "..." << endl;
-    return true;
 }
 
 int64_t HFTServer::isFileValid(boost::uuids::uuid u, string remoteFileName, int64_t fileSize, string fileLastModifyDate, string localFileName, string tempFileName, string usrFileName) {
@@ -123,7 +67,7 @@ int64_t HFTServer::isFileValid(boost::uuids::uuid u, string remoteFileName, int6
     return 0;
 }
 
-void HFTServer::handleClient(UDTSOCKET& sock) {
+int HFTServer::run() {
 #ifndef WIN32
     pthread_t monitorThread;
     pthread_create(&monitorThread, NULL, monitor, this);
@@ -132,13 +76,14 @@ void HFTServer::handleClient(UDTSOCKET& sock) {
     CreateThread(NULL, 0, monitor, this, 0, NULL);
 #endif
     // Gestiono la operacion que el cliente quiera realizar siguiendo el protocolo establecido
-    if (!receive(sock, &modeIsUpload, sizeof(bool), " el modo de operación")) return;
+    if (!receive(aSock, &modeIsUpload, sizeof(bool), " el modo de operación")) return -1;
+    if (!receive(aSock, &mssTestBufSize, sizeof(int32_t), " el tamaño del test de MSS")) return -1;
     if (modeIsUpload) {
-        if (!receive(sock, uuid, SIZE_UUID, " el UUID del cliente")) return;
-        if (!receiveString(sock, clientFileName, " el nombre del archivo en el cliente")) return;
-        if (!receive(sock, &fileSize, sizeof(int64_t), " el tamaño del archivo en el cliente")) return;
-        if (!receiveString(sock, fileLastModifyDate, " la fecha de modificación del archivo en el cliente")) return;
-        if (!receiveString(sock, serverFileName, " el nombre del archivo en el servidor")) return;
+        if (!receive(aSock, uuid, SIZE_UUID, " el UUID del cliente")) return -1;
+        if (!receiveString(aSock, clientFileName, " el nombre del archivo en el cliente")) return -1;
+        if (!receive(aSock, &fileSize, sizeof(int64_t), " el tamaño del archivo en el cliente")) return -1;
+        if (!receiveString(aSock, fileLastModifyDate, " la fecha de modificación del archivo en el cliente")) return -1;
+        if (!receiveString(aSock, serverFileName, " el nombre del archivo en el servidor")) return -1;
 
         boost::uuids::uuid uClient;
         memcpy(&uClient, uuid, SIZE_UUID); // Convierto UUID en formato char* a boost::uuids::uuid
@@ -149,12 +94,15 @@ void HFTServer::handleClient(UDTSOCKET& sock) {
         // Compruebo si el nombre de archivo en el servidor es valido y calculo el offset por el que debe empezar a mandar el cliente
         fileOffset = isFileValid(uClient, clientFileName, fileSize, fileLastModifyDate, serverFileName, serverTempFileName, serverUsrFileName);
         isServerFileNameValid = (fileOffset >= 0);
-        if (!send(sock, &isServerFileNameValid, sizeof(bool), " la validez del nombre de archivo en el servidor")) return;
+        if (!send(aSock, &isServerFileNameValid, sizeof(bool), " la validez del nombre de archivo en el servidor")) return -1;
         if (!isServerFileNameValid) { // Si el nombre de archivo en el servidor no era valido, cierro el socket y salgo
-            UDT::close(sock);
-            return;
+            UDT::close(aSock);
+            return -1;
         }
-        if (!send(sock, &fileOffset, sizeof(int64_t), " el progreso de archivo ya subido")) return;
+		if (!send(aSock, &fileOffset, sizeof(int64_t), " el progreso de archivo ya subido")) return -1;
+		if (!findOptimumParams(false)) {	// En caso de que el cliente lo hubiese solicitado, ejecuto un test de velocidad
+			errorWithUDTmsg("No se pudo completar el test de MSS!");
+		}
 
         if (fileOffset == 0) {
             remove(serverTempFileName.c_str());                                 // Me aseguro de que no exista un archivo temporal con el mismo nombre
@@ -163,81 +111,135 @@ void HFTServer::handleClient(UDTSOCKET& sock) {
             fileStream.close();
         }
 
-        fileStream.open(serverTempFileName.c_str(), ios::out | ios::binary | ios::app);
+		fileStream.open(serverTempFileName.c_str(), ios::out | ios::binary | ios::app);
         while (mon == NULL) pause(1);
         mon->start(this); // Monitoreo y comienzo la subida del archivo
         
         /*int64_t offs = 0;
-        if (UDT::ERROR == UDT::recvfile(sock, fileStream, offs, fileSize - fileOffset)) {
+        if (UDT::ERROR == UDT::recvfile(aSock, fileStream, offs, fileSize - fileOffset)) {
             mon->stop();
             errorWithUDTmsg("No se pudo completar la subida del archivo '" + clientFileName + "'");
-            return;
+            return -1;
         }*/
         
         const int LEN=1400;
         char buf[LEN];
         int readLen;
-        while (fileStream.good()) {
-            readLen = UDT::recv(sock, buf, LEN, 0);
+        while (fileStream.tellp() < fileSize) {
+            readLen = UDT::recv(aSock, buf, LEN, 0);
             if (readLen == UDT::ERROR) {
                 break;
             }
             fileStream.write(buf, readLen);
         }
-        ackTransfer = fileStream.eof();
+		ackTransfer = (fileStream.tellp() == fileSize);
         fileStream.flush();
         fileStream.close();
 		mon->stop();
         
 		if (!ackTransfer) {
             errorWithUDTmsg("No se pudo completar la subida del archivo '" + clientFileName + "'");
-            return;
+            return -1;
         }
 		// El envio suele ir unos 12MB por delante que la recepcion -> Esperar a recibir un ACK del servidor previene que cierre el socket antes de que...
-        send(sock, &ackTransfer, sizeof(bool), " la confirmacion de recepcion del archivo en el servidor"); // ... terminen de llegarle esos 12 MB
+        send(aSock, &ackTransfer, sizeof(bool), " la confirmacion de recepcion del archivo en el servidor"); // ... terminen de llegarle esos 12 MB
         // Por ultimo, borro el archivo '.usr' y renombro el '.temp' al nombre deseado
         if (rename(serverTempFileName.c_str(), serverFileName.c_str()) == 0) {
             if (remove(serverUsrFileName.c_str()) != 0) {
                 info("El archivo se ha subido correctamente, pero ha sido imposible eliminar el archivo temporal '" + serverUsrFileName + "'.");
             }
-            cout << "¡Enhorabuena! El archivo '" << serverFileName << "' se ha subido correctamente." << endl;
+            info("¡Enhorabuena! El archivo '" + serverFileName + "' se ha subido correctamente.");
         }
         else {
             info("El archivo se ha subido correctamente, pero ha sido imposible renombrarlo. Su nombre actual es '" + serverTempFileName + "'.");
         }
     }
 
-    UDT::close(sock); // Cierro el socket
-}
-
-#ifndef WIN32
-void* HFTServer::threadHandleClient(void* srvr)
-#else
-DWORD WINAPI HFTServer::threadHandleClient(LPVOID srvr)
-#endif
-{
-    HFTServer* server = (HFTServer*)srvr;
-
-	info("Ejecutando test para encontrar el MSS óptimo!");
-	server->findOptimumParams();
-
-    UDTSOCKET* sock = new UDTSOCKET(server->aSock);
-	int mss;
-	UDT::getsockopt(server->aSock, 0, UDT_MSS, &mss, sizeof(int));
-	UDT::setsockopt(*sock, 0, UDT_MSS, &mss, sizeof(int));
-    server->handleClient(*sock);
-    delete sock;
+    UDT::close(aSock); // Cierro el socket
     return 0;
 }
 
-int HFTServer::run() {
+bool HFTServerHandler::iniFromArgs(int argc, char* argv[]) {
+    // Inicializa el servidor (port) a partir de argv, devolviendo true si todo fue correcto
+    if (argc > 2) {
+        error("Uso: server PuertoServidor.");
+        return false;
+    } else if (argc == 2) {
+        if (atoi(argv[1]) <= 0) {
+            error("El puerto del servidor debe ser un número mayor que 0.");
+            return false;
+        }
+        else {
+            port = string(argv[1]);
+        }
+    } else {
+        port = DEF_SRV_PORT;
+    }
+    
+    return true;
+}
+
+bool HFTServerHandler::configurePassiveSocket() {
+    // Configura el socket pasivo para que escuche en el puerto port
+    addrinfo addrAux, *addrServer;
+    
+    memset(&addrAux, 0, sizeof(struct addrinfo)); // Inicializo el socket como requiere la libreria UDT
+    addrAux.ai_flags = AI_PASSIVE;
+    addrAux.ai_family = AF_INET;
+    addrAux.ai_socktype = SOCK_STREAM;
+    
+    pSock = UDT::socket(addrAux.ai_family, addrAux.ai_socktype, addrAux.ai_protocol);
+    
+    if (0 != getaddrinfo(NULL, port.c_str(), &addrAux, &addrServer)) { // Compruebo que el puerto este accesible
+        error("Puerto (" + port + ") ilegal o en uso");
+        return false;
+    }
+    
+#ifdef WIN32
+	UDT::setsockopt(pSock, 0, UDT_MSS, new int(1052), sizeof(int)); // Windows UDP issue: For better performance, modify HKLM\System\CurrentControlSet\Services\Afd\Parameters\FastSendDatagramThreshold
+#endif
+    
+    if (UDT::ERROR == UDT::bind(pSock, addrServer->ai_addr, addrServer->ai_addrlen)) { // Enlazo el socket pasivo al puerto port
+        errorWithUDTmsg("No se pudo enlazar el socket al puerto " + port);
+        return false;
+    }
+    
+    freeaddrinfo(addrServer);
+    
+    if (UDT::ERROR == UDT::listen(pSock, BACKLOG)) { // Pongo el socket pasivo en modo escucha
+        errorWithUDTmsg("No se pudo poner el socket en modo escucha");
+        return false;
+    }
+    
+    cout << "El servidor está a la escucha en el puerto " << port << "..." << endl;
+    return true;
+}
+
+#ifndef WIN32
+void* HFTServerHandler::threadHandleClient(void* sock)
+#else
+DWORD WINAPI HFTServerHandler::threadHandleClient(LPVOID sock)
+#endif
+{
+    UDTSOCKET* aSock = new UDTSOCKET(*(UDTSOCKET*)sock);
+    HFTServer* handler = new HFTServer(*aSock);
+    
+    handler->run();
+
+    delete aSock;
+    delete handler;
+    return 0;
+}
+
+int HFTServerHandler::run() {
     UDTUpDown _udt_;    // Automatically start up and clean up UDT module
-    if (!configurePassiveSocket(pSock)) return -1;
+    if (!configurePassiveSocket()) return -1;
 
     sockaddr_storage clientaddr;
     int addrlen = sizeof(clientaddr);
     char clientIp[NI_MAXHOST];
     char clientPort[NI_MAXSERV];
+    UDTSOCKET aSock;
 
     while (true) {
         if (UDT::INVALID_SOCK == (aSock = UDT::accept(pSock, (sockaddr*)&clientaddr, &addrlen))) { // Acepto al cliente entrante
@@ -250,10 +252,10 @@ int HFTServer::run() {
         cout << "Nueva conexión (" << clientIp << ":" << clientPort << ")." << endl;
 #ifndef WIN32
         pthread_t fileThread;
-        pthread_create(&fileThread, NULL, threadHandleClient, this);
+        pthread_create(&fileThread, NULL, threadHandleClient, &aSock);
         pthread_detach(fileThread);
 #else
-        CreateThread(NULL, 0, threadHandleClient, this, 0, NULL);
+        CreateThread(NULL, 0, threadHandleClient, &aSock, 0, NULL);
 #endif
     }
 
@@ -261,8 +263,12 @@ int HFTServer::run() {
     return 0;
 }
 
+#ifndef WIN32
 int main(int argc, char* argv[]) {
-    HFTServer* server = new HFTServer(argc, argv);
+#else
+int _tmain(int argc, _TCHAR* argv[]) {
+#endif
+    HFTServerHandler* server = new HFTServerHandler(argc, argv);
     int ret = server->run();
     delete server;
 

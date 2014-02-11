@@ -2,13 +2,14 @@
 
 using namespace HFT;
 
-bool HFTClient::ini(bool modeIsUpload, string serverIp, string serverPort, string clientFileName, string serverFileName, string uuidFileName) {
+bool HFTClient::ini(bool modeIsUpload, string serverIp, string serverPort, string clientFileName, string serverFileName, int32_t mssTestBufSize, string uuidFileName) {
     // Inicializa el cliente, devolviendo true si todo fue correcto
     this->modeIsUpload = modeIsUpload;
     this->serverIp = serverIp;
     this->serverPort = serverPort;
     this->clientFileName = clientFileName;
     this->serverFileName = serverFileName;
+    this->mssTestBufSize = mssTestBufSize;
 
     if (atoi(serverPort.c_str()) <= 0) {
         error("El puerto del servidor debe ser un numero mayor que 0.");
@@ -29,7 +30,8 @@ bool HFTClient::ini(bool modeIsUpload, string serverIp, string serverPort, strin
         fileLastModifyDate = string(asctime(gmtime(&(attrib.st_mtime)))); // Convierto la fecha a string
 #else
         FILETIME lastWriteTime;
-        HANDLE fh = CreateFile(str2wstr(clientFileName).c_str(), GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		//HANDLE fh = CreateFile(str2wstr(clientFileName).c_str(), GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		HANDLE fh = CreateFile(clientFileName.c_str(), GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         if (fh == INVALID_HANDLE_VALUE) { // Abro el archivo
             error("Imposible abrir el archivo local ('" + clientFileName + "') para obtener su fecha de modificacion.");
             return false;
@@ -63,9 +65,11 @@ bool HFTClient::iniFromArgs(int argc, char* argv[]) {
     if (argc == 6) {
         return ini((strcmp(argv[1], "1") == 0), string(argv[2]), string(argv[3]), string(argv[4]), string(argv[5]));
     } else if (argc == 7) {
-        return ini((strcmp(argv[1], "1") == 0), string(argv[2]), string(argv[3]), string(argv[4]), string(argv[5]), string(argv[6]));
+        return ini((strcmp(argv[1], "1") == 0), string(argv[2]), string(argv[3]), string(argv[4]), string(argv[5]), atoi(argv[6]));
+    } else if (argc == 8) {
+        return ini((strcmp(argv[1], "1") == 0), string(argv[2]), string(argv[3]), string(argv[4]), string(argv[5]), atoi(argv[6]), string(argv[7]));
     } else {
-        error("Uso: client subir/descargar(1/0) IPservidor PuertoServidor ArchivoLocal ArchivoRemoto [ArchivoUUID].");
+        error("Uso: client subir/descargar(1/0) IPservidor PuertoServidor ArchivoLocal ArchivoRemoto [MSSTest(tamaño en KB)] [ArchivoUUID].");
         return false;
     }
 }
@@ -73,6 +77,14 @@ bool HFTClient::iniFromArgs(int argc, char* argv[]) {
 bool HFTClient::isTx() {
     // Devuelve true si el cliente esta transmitiendo; false en caso contrario
     return modeIsUpload;
+}
+
+string HFTClient::getServerIp() {
+    return serverIp;
+}
+
+string HFTClient::getServerPort() {
+    return serverPort;
 }
 
 bool HFTClient::getUUID(char* uuidFileName) {
@@ -125,10 +137,6 @@ bool HFTClient::connectToServer(UDTSOCKET& sock) {
     }
 
     freeaddrinfo(addrServer);
-
-	info("Ejecutando test para encontrar el MSS óptimo!");
-	findOptimumParams();
-
     return true;
 }
 
@@ -145,6 +153,7 @@ int HFTClient::run() {
 #endif
     // Gestiono la operacion que el cliente quiera realizar siguiendo el protocolo establecido
     if (!send(aSock, &modeIsUpload, sizeof(bool), " el modo de operacion")) return -1;
+    if (!send(aSock, &mssTestBufSize, sizeof(int32_t), " el tamaño del test de MSS")) return -1;
     if (modeIsUpload) {
         if (!send(aSock, uuid, SIZE_UUID, " el UUID del cliente")) return -1;
         if (!sendString(aSock, clientFileName, " el nombre del archivo en el cliente")) return -1;
@@ -158,6 +167,9 @@ int HFTClient::run() {
             return -1;
         }
         if (!receive(aSock, &fileOffset, sizeof(int64_t), " el progreso de archivo ya subido")) return -1;
+		if (!findOptimumParams(true)) {	// En caso de que el cliente lo hubiese solicitado, ejecuto un test de velocidad
+			errorWithUDTmsg("No se pudo completar el test de MSS!");
+		}
         info("Se va a proceder a subir el archivo '" + clientFileName + "' -> '" + serverFileName + "', que lleva ya " + boost::lexical_cast<string>(fileOffset) + " bytes subidos (quedan " + boost::lexical_cast<string>(fileSize - fileOffset) + " bytes).");
 
 		fileStream.open(clientFileName.c_str(), ios::in | ios::binary);
@@ -172,7 +184,7 @@ int HFTClient::run() {
         
         const int LEN=1400;
         char buf[LEN];
-        int alreadySent, sentLen, bufRead;
+        int64_t alreadySent, sentLen, bufRead;
         fileStream.seekg(fileOffset);
         while (!fileStream.eof()) {
             fileStream.read(buf, LEN);

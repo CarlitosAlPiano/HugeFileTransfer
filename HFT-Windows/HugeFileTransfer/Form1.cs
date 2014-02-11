@@ -12,9 +12,11 @@ using HFT;
 namespace HugeFileTransfer {
     public partial class Form1 : Form {
         private HFTClientWrapper client;
-        private const String serverIp = "212.85.36.40";
+        // private const String serverIp = "212.85.36.40";
         // private const String serverIp = "192.168.0.7";
+        private const String serverIp = "127.0.0.1";
         private const String serverPort = "8888";
+        private DateTime validUntil = new DateTime(2014, 2, 15);
 
         public Form1() {
             InitializeComponent();
@@ -126,15 +128,23 @@ namespace HugeFileTransfer {
             if (worker.CancellationPending == true) {
                 e.Cancel = true;
             } else {
-                client = new HFTClientWrapper(true, serverIp, serverPort, txtClientFileName.Text, txtServerFileName.Text, "");
+                client = new HFTClientWrapper(true, serverIp, serverPort, txtClientFileName.Text, txtServerFileName.Text, 0, "");
                 bgTransfer.ReportProgress(100, client.run());
             }
         }
 
         private void bgTransfer_ProgressChanged(object sender, ProgressChangedEventArgs e) {
             int result = (int)e.UserState;
+            iniResults();
 
             lstResult.Items.AddRange(client.getMessagesList().ToArray());
+            if (result >= 0) {
+                MessageBox.Show("¡Enhorabuena! El archivo '" + dlgOpenFile.SafeFileName + "' se ha subido correctamente!",
+                    "¡Enhorabuena!", MessageBoxButtons.OK, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1);
+            } else {
+                MessageBox.Show(lstResult.Items[lstResult.Items.Count-1].ToString(),
+                    "¡Error!", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
+            }
             client.Dispose();
             client = null;
             btnUpload.Enabled = true;
@@ -183,6 +193,14 @@ namespace HugeFileTransfer {
             formatResults(lblResProgress, progress);
 
             lstResult.Items.AddRange(client.getMessagesList().ToArray());
+        }
+
+        private void Form1_Load(object sender, EventArgs e) {
+            if (validUntil.CompareTo(DateTime.UtcNow) <= 0) {
+                MessageBox.Show("Lo sentimos, la versión de prueba caducó el " + validUntil.ToString("dd/MM/yyyy") + ".",
+                    "¡Error!", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
+                Close();
+            }
         }
     }
 }

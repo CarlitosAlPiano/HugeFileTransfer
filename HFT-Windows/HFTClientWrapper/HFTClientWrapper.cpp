@@ -1,4 +1,3 @@
-#include "stdafx.h"
 #include "HFTClientWrapper.h"
 
 namespace HFT {
@@ -6,9 +5,9 @@ namespace HFT {
 		client = new HFTClient();
 	}
 
-	HFTClientWrapper::HFTClientWrapper(bool modeIsUpload, String^ serverIp, String^ serverPort, String^ clientFileName, String^ serverFileName, String^ uuidFileName)
+	HFTClientWrapper::HFTClientWrapper(bool modeIsUpload, String^ serverIp, String^ serverPort, String^ clientFileName, String^ serverFileName, Int32 mssTestBufSize, String^ uuidFileName)
 		: HFTClientWrapper() {
-		ini(modeIsUpload, serverIp, serverPort, clientFileName, serverFileName, uuidFileName);
+		ini(modeIsUpload, serverIp, serverPort, clientFileName, serverFileName, mssTestBufSize, uuidFileName);
 	}
 
 	HFTClientWrapper::~HFTClientWrapper() {
@@ -19,14 +18,14 @@ namespace HFT {
 		delete client;
 	}
 
-	void HFTClientWrapper::ini(bool modeIsUpload, String^ serverIp, String^ serverPort, String^ clientFileName, String^ serverFileName, String^ uuidFileName) {
+	void HFTClientWrapper::ini(bool modeIsUpload, String^ serverIp, String^ serverPort, String^ clientFileName, String^ serverFileName, Int32 mssTestBufSize, String^ uuidFileName) {
 		string sIp, sPort, cFileName, sFileName, uFileName;
 		toNativeString(sIp, serverIp);
 		toNativeString(sPort, serverPort);
 		toNativeString(cFileName, clientFileName);
 		toNativeString(sFileName, serverFileName);
 		toNativeString(uFileName, uuidFileName);
-		client->ini(modeIsUpload, sIp, sPort, cFileName, sFileName, uFileName);
+		client->ini(modeIsUpload, sIp, sPort, cFileName, sFileName, mssTestBufSize, uFileName);
 	}
 
 	bool HFTClientWrapper::obtainMonitorResults() {
