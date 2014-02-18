@@ -1,4 +1,4 @@
-C++ = g++
+C++ = g++ -g
 
 ifndef os
    os = OSX
@@ -56,4 +56,4 @@ clean:
 install:
 	export PATH=$(DIR):$$PATH
 	export DYLD_LIBRARY_PATH=$(DIR)/udt4/src:$$DYLD_LIBRARY_PATH
-	rm -f *.o
+	#rm -f *.o

@@ -11,16 +11,23 @@ using HFT;
 
 namespace HugeFileTransfer {
     public partial class Form1 : Form {
-        private HFTClientWrapper client;
-        // private const String serverIp = "212.85.36.40";
-        // private const String serverIp = "192.168.0.7";
-        private const String serverIp = "127.0.0.1";
+        private const String serverNova = "212.85.36.40";
+        private const String serverLocal = "127.0.0.1";
         private const String serverPort = "8888";
-        private DateTime validUntil = new DateTime(2014, 2, 15);
+        private const String serverProgressPort = "8889";
+        private String serverIp = serverNova;
+        private HFTClientWrapper client;
+        private DateTime validUntil = new DateTime(2014, 3, 15);
+
+        private void updateOpts() {
+            menuItemServidorNova.Checked = (serverIp == serverNova);
+            menuItemServidorLocal.Checked = !menuItemServidorNova.Checked;
+        }
 
         public Form1() {
             InitializeComponent();
             iniResults();
+            updateOpts();
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e) {
@@ -100,6 +107,7 @@ namespace HugeFileTransfer {
 
         private void btnExaminar_Click(object sender, EventArgs e) {
             btnExaminar.Enabled = false;
+            btnUpload.Enabled = false;
 
             dlgOpenFile.FileName = txtClientFileName.Text;
             if (dlgOpenFile.ShowDialog() == System.Windows.Forms.DialogResult.OK) {
@@ -107,14 +115,13 @@ namespace HugeFileTransfer {
             }
 
             btnExaminar.Enabled = true;
+            btnUpload.Enabled = (txtClientFileName.Text != "");
         }
 
         private void btnUpload_Click(object sender, EventArgs e) {
             if (!bgTransfer.IsBusy) {
+                btnExaminar.Enabled = false;
                 btnUpload.Enabled = false;
-                foreach (Control ctrl in grpResult.Controls) {
-                    ctrl.Enabled = true;
-                }
                 bgTransfer.RunWorkerAsync();
                 if (!bgMonitor.IsBusy) {
                     bgMonitor.RunWorkerAsync();
@@ -128,8 +135,12 @@ namespace HugeFileTransfer {
             if (worker.CancellationPending == true) {
                 e.Cancel = true;
             } else {
-                client = new HFTClientWrapper(true, serverIp, serverPort, txtClientFileName.Text, txtServerFileName.Text, 0, "");
-                bgTransfer.ReportProgress(100, client.run());
+                client = new HFTClientWrapper();
+                if (client.ini(true, serverIp, serverPort, serverProgressPort, txtClientFileName.Text, txtServerFileName.Text, 0, "")) {
+                    bgTransfer.ReportProgress(100, client.run());
+                } else {
+                    bgTransfer.ReportProgress(100, -1);
+                }
             }
         }
 
@@ -138,6 +149,7 @@ namespace HugeFileTransfer {
             iniResults();
 
             lstResult.Items.AddRange(client.getMessagesList().ToArray());
+            lstResult.TopIndex = lstResult.Items.Count - 1;
             if (result >= 0) {
                 MessageBox.Show("¡Enhorabuena! El archivo '" + dlgOpenFile.SafeFileName + "' se ha subido correctamente!",
                     "¡Enhorabuena!", MessageBoxButtons.OK, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1);
@@ -147,6 +159,7 @@ namespace HugeFileTransfer {
             }
             client.Dispose();
             client = null;
+            btnExaminar.Enabled = true;
             btnUpload.Enabled = true;
             foreach (Control ctrl in grpResult.Controls) {
                 if (!ctrl.Equals(lstResult)) ctrl.Enabled = false;
@@ -180,6 +193,10 @@ namespace HugeFileTransfer {
             if (client == null || !client.obtainMonitorResults()) {
                 iniResults();
                 return;
+            } else {
+                foreach (Control ctrl in grpResult.Controls) {
+                    ctrl.Enabled = true;
+                }
             }
 
             KBps = client.getKBps();
@@ -193,6 +210,7 @@ namespace HugeFileTransfer {
             formatResults(lblResProgress, progress);
 
             lstResult.Items.AddRange(client.getMessagesList().ToArray());
+            lstResult.TopIndex = lstResult.Items.Count - 1;
         }
 
         private void Form1_Load(object sender, EventArgs e) {
@@ -201,6 +219,16 @@ namespace HugeFileTransfer {
                     "¡Error!", MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1);
                 Close();
             }
+        }
+
+        private void menuItemServidorNova_Click(object sender, EventArgs e) {
+            serverIp = serverNova;
+            updateOpts();
+        }
+
+        private void menuItemServidorLocal_Click(object sender, EventArgs e) {
+            serverIp = serverLocal;
+            updateOpts();
         }
     }
 }

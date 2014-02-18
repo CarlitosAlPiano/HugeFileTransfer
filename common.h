@@ -5,6 +5,7 @@
 	#include <arpa/inet.h>
 	#include <netdb.h>
 	#include <sys/stat.h>
+	#include <fcntl.h>
 	#define HFTClientDLL_API
 #else
 	#pragma once
@@ -24,7 +25,8 @@
 #include <fstream>
 #include <cstdlib>
 #include <cstdio>
-#include <time.h>
+#include <ctime>
+#include <cerrno>
 #include <iomanip>
 #include <queue>
 #include <cmath>
@@ -68,25 +70,26 @@ namespace HFT {
 
 	class HFTClientDLL_API Monitor {
 	private:
-		bool running, isTx;
-		double KBps, remaining;
+		bool running, done, isTx;
+		double KBps, tRemaining;
+		int tElapsed;
 		int64_t currentSize, totalSize;
-        fstream* fStream;
-		UDTSOCKET* sock;
-        
-		void printResult();
+		fstream* fStream;
+		int* sockProgress;
 	public:
         static const string sep;
+		static const double alpha;
 
-        Monitor();
+        Monitor(HFTEntity* entity);
 		~Monitor();
 		void printHeader();
-		void printResults();
+		void printResult();
+		bool isRunning();
 		double getKBps();
 		double getRemaining();
+		int getElapsed();
 		int64_t getCurrentSize();
 		double getCompleted();
-		void start(HFTEntity* entity);
 		void stop();
 		void run();
 	};
@@ -99,14 +102,16 @@ namespace HFT {
 		int64_t fileSize, fileOffset;
 		fstream fileStream;
 		UDTSOCKET aSock;
-        static const int mssLen;
-        static int mss[];
+		int sockProgress;
         int32_t mssTestBufSize;
 	public:
+        static const int mssLen;
+        static int mss[];
 		Monitor* mon;
 
-		HFTEntity() : modeIsUpload(true), isServerFileNameValid(false), ackTransfer(false), clientFileName(""), serverFileName(""), fileLastModifyDate(""), fileSize(0), fileOffset(0), mssTestBufSize(0), mon(NULL) {}
-        bool isModeUpload();
+		HFTEntity() : modeIsUpload(true), isServerFileNameValid(false), ackTransfer(false), clientFileName(""), serverFileName(""), fileLastModifyDate(""), fileSize(0), fileOffset(0), sockProgress(-1), mssTestBufSize(0), mon(NULL) {}
+		~HFTEntity();
+		bool isModeUpload();
         string getUUID();
         string getClientFileName();
         string getServerFileName();
@@ -115,7 +120,9 @@ namespace HFT {
         int64_t getFileOffset();
         fstream* getFileStream();
         UDTSOCKET* getSocket();
-		bool findOptimumParams(bool isClient);
+		int* getSockProgress();
+		void setSockProgress(int s);
+		bool findOptimumParams();
 		virtual bool isTx() = 0;
 		virtual int run() = 0;
 	};
@@ -128,11 +135,14 @@ namespace HFT {
 	bool receive(const UDTSOCKET& sock, void* buf, int len, string tag = "");
 	bool receiveString(const UDTSOCKET& sock, string& str, string tag = "");
 	bool readString(ifstream& ifs, string& str, string errMsg);
+	void setBasicSockParams(UDTSOCKET& sock);
 #ifdef WIN32
 	string WinFileTimeToString(const FILETIME& fileTime);
 	wstring str2wstr(const string& s);
+	DWORD WINAPI adjustBw(LPVOID ntty);
 	DWORD WINAPI monitor(LPVOID ntty);
 #else
+	void* adjustBw(void* ntty);
 	void* monitor(void* ntty);
 #endif
 }

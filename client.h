@@ -8,19 +8,21 @@
 namespace HFT {
     class HFTClientDLL_API HFTClient : public HFTEntity {
 	private:
-		string serverIp, serverPort;
+		string serverIp, serverPort, serverProgressPort;
 		
         bool iniFromArgs(int argc, char* argv[]);
 		bool getUUID(char* uuidFileName);
-		bool connectToServer(UDTSOCKET& sock);
+		bool connectToServer();
+		bool connectToProgressServer();
 	public:
 		HFTClient() {}
 		HFTClient(int argc, char* argv[]) { iniFromArgs(argc, argv); }
-		HFTClient(bool modeIsUpload, string serverIp, string serverPort, string clientFileName, string serverFileName, int32_t mssTestBufSize = 0, string uuidFileName = "") { ini(modeIsUpload, serverIp, serverPort, clientFileName, serverFileName, mssTestBufSize, uuidFileName); }
+		HFTClient(bool modeIsUpload, string serverIp, string serverPort, string serverProgressPort, string clientFileName, string serverFileName, int32_t mssTestBufSize = 0, string uuidFileName = "") { ini(modeIsUpload, serverIp, serverPort, serverProgressPort, clientFileName, serverFileName, mssTestBufSize, uuidFileName); }
 		virtual ~HFTClient() {}
         string getServerIp();
         string getServerPort();
-		bool ini(bool modeIsUpload, string serverIp, string serverPort, string clientFileName, string serverFileName, int32_t mssTestBufSize = 0, string uuidFileName = "");
+        string getServerProgressPort();
+		bool ini(bool modeIsUpload, string serverIp, string serverPort, string serverProgressPort, string clientFileName, string serverFileName, int32_t mssTestBufSize = 0, string uuidFileName = "");
 		bool isTx();
 		int run();
 	};

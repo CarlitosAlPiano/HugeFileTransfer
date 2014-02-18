@@ -2,17 +2,27 @@
 
 using namespace HFT;
 
-bool HFTClient::ini(bool modeIsUpload, string serverIp, string serverPort, string clientFileName, string serverFileName, int32_t mssTestBufSize, string uuidFileName) {
+bool HFTClient::isTx() {
+	// Devuelve true si el cliente esta transmitiendo; false en caso contrario
+	return modeIsUpload;
+}
+
+bool HFTClient::ini(bool modeIsUpload, string serverIp, string serverPort, string serverProgressPort, string clientFileName, string serverFileName, int32_t mssTestBufSize, string uuidFileName) {
     // Inicializa el cliente, devolviendo true si todo fue correcto
     this->modeIsUpload = modeIsUpload;
     this->serverIp = serverIp;
     this->serverPort = serverPort;
+	this->serverProgressPort = serverProgressPort;
     this->clientFileName = clientFileName;
     this->serverFileName = serverFileName;
     this->mssTestBufSize = mssTestBufSize;
 
     if (atoi(serverPort.c_str()) <= 0) {
         error("El puerto del servidor debe ser un numero mayor que 0.");
+        return false;
+    }
+    if (atoi(serverProgressPort.c_str()) <= 0) {
+        error("El puerto de progreso del servidor debe ser un numero mayor que 0.");
         return false;
     }
 
@@ -62,21 +72,16 @@ bool HFTClient::ini(bool modeIsUpload, string serverIp, string serverPort, strin
 
 bool HFTClient::iniFromArgs(int argc, char* argv[]) {
     // Inicializa el cliente a partir de argv, devolviendo true si todo fue correcto
-    if (argc == 6) {
-        return ini((strcmp(argv[1], "1") == 0), string(argv[2]), string(argv[3]), string(argv[4]), string(argv[5]));
-    } else if (argc == 7) {
-        return ini((strcmp(argv[1], "1") == 0), string(argv[2]), string(argv[3]), string(argv[4]), string(argv[5]), atoi(argv[6]));
+    if (argc == 7) {
+        return ini((strcmp(argv[1], "1") == 0), string(argv[2]), string(argv[3]), string(argv[4]), string(argv[5]), string(argv[6]));
     } else if (argc == 8) {
-        return ini((strcmp(argv[1], "1") == 0), string(argv[2]), string(argv[3]), string(argv[4]), string(argv[5]), atoi(argv[6]), string(argv[7]));
+        return ini((strcmp(argv[1], "1") == 0), string(argv[2]), string(argv[3]), string(argv[4]), string(argv[5]), string(argv[6]), atoi(argv[7]));
+    } else if (argc == 9) {
+        return ini((strcmp(argv[1], "1") == 0), string(argv[2]), string(argv[3]), string(argv[4]), string(argv[5]), string(argv[6]), atoi(argv[7]), string(argv[8]));
     } else {
-        error("Uso: client subir/descargar(1/0) IPservidor PuertoServidor ArchivoLocal ArchivoRemoto [MSSTest(tamaño en KB)] [ArchivoUUID].");
+        error("Uso: client subir/descargar(1/0) IPservidor PuertoServidor PuertoProgresoServidor ArchivoLocal ArchivoRemoto [MSSTest(tamaño en KB)] [ArchivoUUID].");
         return false;
     }
-}
-
-bool HFTClient::isTx() {
-    // Devuelve true si el cliente esta transmitiendo; false en caso contrario
-    return modeIsUpload;
 }
 
 string HFTClient::getServerIp() {
@@ -85,6 +90,10 @@ string HFTClient::getServerIp() {
 
 string HFTClient::getServerPort() {
     return serverPort;
+}
+
+string HFTClient::getServerProgressPort() {
+    return serverProgressPort;
 }
 
 bool HFTClient::getUUID(char* uuidFileName) {
@@ -116,8 +125,8 @@ bool HFTClient::getUUID(char* uuidFileName) {
     return true;
 }
 
-bool HFTClient::connectToServer(UDTSOCKET& sock) {
-    // Conecta el socket sock al servidor, leyendo la direccion de las variables serverIp y serverPort
+bool HFTClient::connectToServer() {
+    // Conecta el socket aSock al servidor, leyendo la direccion de las variables serverIp y serverPort
     addrinfo addrAux, *addrServer;
 
     memset(&addrAux, 0, sizeof(struct addrinfo)); // Inicializo el socket como requiere la libreria UDT
@@ -125,13 +134,14 @@ bool HFTClient::connectToServer(UDTSOCKET& sock) {
     addrAux.ai_family = AF_INET;
     addrAux.ai_socktype = SOCK_STREAM;
 
-    sock = UDT::socket(addrAux.ai_family, addrAux.ai_socktype, addrAux.ai_protocol);
+    aSock = UDT::socket(addrAux.ai_family, addrAux.ai_socktype, addrAux.ai_protocol);
+	setBasicSockParams(aSock);
 
     if (0 != getaddrinfo(serverIp.c_str(), serverPort.c_str(), &addrAux, &addrServer)) { // Compruebo que la direccion del servidor sea valida
         error("Direccion del servidor incorrecta (" + serverIp + ":" + serverPort + ").");
         return false;
     }
-    if (UDT::ERROR == UDT::connect(sock, addrServer->ai_addr, addrServer->ai_addrlen)) { // Y conecto el socket al servidor
+	if (UDT::ERROR == UDT::connect(aSock, addrServer->ai_addr, addrServer->ai_addrlen)) { // Y conecto el socket al servidor
         errorWithUDTmsg("No se pudo conectar con el servidor");
         return false;
     }
@@ -140,17 +150,39 @@ bool HFTClient::connectToServer(UDTSOCKET& sock) {
     return true;
 }
 
+bool HFTClient::connectToProgressServer() {
+	// Conecta el socket sockProgress al servidor, leyendo la direccion de las variables serverIp y serverProgressPort
+	sockaddr_in addrServer;
+	hostent	*serverIpAddr;
+
+	memset(&addrServer, 0, sizeof(addrServer));
+	addrServer.sin_family = AF_INET;
+	addrServer.sin_port = htons((u_short)atoi(serverProgressPort.c_str()));
+	if (serverIpAddr = gethostbyname(serverIp.c_str())) {	// Obtengo la direccion ip si serverIp representa el nombre del host
+		memcpy(&addrServer.sin_addr, serverIpAddr->h_addr, serverIpAddr->h_length);
+	} else if (INADDR_NONE == (addrServer.sin_addr.s_addr = inet_addr(serverIp.c_str()))) { // Compruebo que la direccion ip (en formato 0.0.0.0) sea valida
+		error("Direccion del servidor incorrecta (" + serverIp + ":" + serverPort + ").");
+		return false;
+	}
+
+	if ((sockProgress = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+		error("No se pudo conectar con el servidor. Motivo: " + string(strerror(errno)));
+		return false;
+	}
+
+	if (connect(sockProgress, (sockaddr *)&addrServer, sizeof(addrServer)) < 0) {
+		error("No se pudo conectar con el servidor. Motivo: " + string(strerror(errno)));
+		return false;
+	}
+
+	return true;
+}
+
 int HFTClient::run() {
     UDTUpDown _udt_;    // Automatically start up and clean up UDT module
-    if (!connectToServer(aSock)) return -1;
+	if (!connectToServer() || !connectToProgressServer()) return -1;
 	_udt_.clean = true;
-#ifndef WIN32
-	pthread_t monitorThread;
-	pthread_create(&monitorThread, NULL, monitor, this);
-	pthread_detach(monitorThread);
-#else
-	CreateThread(NULL, 0, monitor, this, 0, NULL);
-#endif
+
     // Gestiono la operacion que el cliente quiera realizar siguiendo el protocolo establecido
     if (!send(aSock, &modeIsUpload, sizeof(bool), " el modo de operacion")) return -1;
     if (!send(aSock, &mssTestBufSize, sizeof(int32_t), " el tamaño del test de MSS")) return -1;
@@ -167,22 +199,33 @@ int HFTClient::run() {
             return -1;
         }
         if (!receive(aSock, &fileOffset, sizeof(int64_t), " el progreso de archivo ya subido")) return -1;
-		if (!findOptimumParams(true)) {	// En caso de que el cliente lo hubiese solicitado, ejecuto un test de velocidad
+		if (!findOptimumParams()) {	// En caso de que el cliente lo hubiese solicitado, ejecuto un test de velocidad
 			errorWithUDTmsg("No se pudo completar el test de MSS!");
 		}
         info("Se va a proceder a subir el archivo '" + clientFileName + "' -> '" + serverFileName + "', que lleva ya " + boost::lexical_cast<string>(fileOffset) + " bytes subidos (quedan " + boost::lexical_cast<string>(fileSize - fileOffset) + " bytes).");
 
 		fileStream.open(clientFileName.c_str(), ios::in | ios::binary);
-        while (mon == NULL) pause(1);
-        mon->start(this); // Monitoreo y comienzo la subida del archivo
+
+		mon = new Monitor(this);	// Monitoreo y comienzo la subida del archivo
+#ifndef WIN32
+		pthread_t bwThread, monitorThread;
+		pthread_create(&bwThread, NULL, adjustBw, this);
+		pthread_detach(bwThread);
+		pthread_create(&monitorThread, NULL, monitor, this);
+		pthread_detach(monitorThread);
+#else
+		CreateThread(NULL, 0, adjustBw, this, 0, NULL);
+		CreateThread(NULL, 0, monitor, this, 0, NULL);
+#endif
         
-        /*if (UDT::ERROR == UDT::sendfile(aSock, fileStream, fileOffset, fileSize - fileOffset, 1408)) {
-            mon->stop();
+        if (UDT::ERROR == UDT::sendfile(aSock, fileStream, fileOffset, fileSize - fileOffset, 1408)) {
+			mon->stop();
+			fileStream.close();
             errorWithUDTmsg("No se pudo completar la subida del archivo '" + clientFileName + "'");
             return -1;
-        }*/
+        }
         
-        const int LEN=1400;
+        /*const int LEN=1400;
         char buf[LEN];
         int64_t alreadySent, sentLen, bufRead;
         fileStream.seekg(fileOffset);
@@ -200,12 +243,14 @@ int HFTClient::run() {
                 }
                 alreadySent += sentLen;
             }
-        }
-        fileStream.close();
+        }*/
+
 		// El envio suele ir unos 12MB por delante que la recepcion -> Esperar a recibir un ACK del servidor previene que cierre el socket antes de que...
 		receive(aSock, &ackTransfer, sizeof(bool), " la confirmacion de recepcion del archivo en el servidor"); // ... terminen de llegarle esos 12 MB
-		mon->stop();
 		info("¡Enhorabuena! El archivo '" + serverFileName + "' se ha subido correctamente.");
+        fileStream.close();
+		mon->stop();
+		while (mon->isRunning()) pause(1);
     }
 
     UDT::close(aSock); // Cierro el socket

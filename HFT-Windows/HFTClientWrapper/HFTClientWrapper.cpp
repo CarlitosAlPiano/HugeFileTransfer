@@ -5,9 +5,9 @@ namespace HFT {
 		client = new HFTClient();
 	}
 
-	HFTClientWrapper::HFTClientWrapper(bool modeIsUpload, String^ serverIp, String^ serverPort, String^ clientFileName, String^ serverFileName, Int32 mssTestBufSize, String^ uuidFileName)
+	HFTClientWrapper::HFTClientWrapper(bool modeIsUpload, String^ serverIp, String^ serverPort, String^ serverProgressPort, String^ clientFileName, String^ serverFileName, Int32 mssTestBufSize, String^ uuidFileName)
 		: HFTClientWrapper() {
-		ini(modeIsUpload, serverIp, serverPort, clientFileName, serverFileName, mssTestBufSize, uuidFileName);
+		ini(modeIsUpload, serverIp, serverPort, serverProgressPort, clientFileName, serverFileName, mssTestBufSize, uuidFileName);
 	}
 
 	HFTClientWrapper::~HFTClientWrapper() {
@@ -18,14 +18,15 @@ namespace HFT {
 		delete client;
 	}
 
-	void HFTClientWrapper::ini(bool modeIsUpload, String^ serverIp, String^ serverPort, String^ clientFileName, String^ serverFileName, Int32 mssTestBufSize, String^ uuidFileName) {
-		string sIp, sPort, cFileName, sFileName, uFileName;
+	bool HFTClientWrapper::ini(bool modeIsUpload, String^ serverIp, String^ serverPort, String^ serverProgressPort, String^ clientFileName, String^ serverFileName, Int32 mssTestBufSize, String^ uuidFileName) {
+		string sIp, sPort, sProgressPort, cFileName, sFileName, uFileName;
 		toNativeString(sIp, serverIp);
 		toNativeString(sPort, serverPort);
+		toNativeString(sProgressPort, serverProgressPort);
 		toNativeString(cFileName, clientFileName);
 		toNativeString(sFileName, serverFileName);
 		toNativeString(uFileName, uuidFileName);
-		client->ini(modeIsUpload, sIp, sPort, cFileName, sFileName, mssTestBufSize, uFileName);
+		return client->ini(modeIsUpload, sIp, sPort, sProgressPort, cFileName, sFileName, mssTestBufSize, uFileName);
 	}
 
 	bool HFTClientWrapper::obtainMonitorResults() {

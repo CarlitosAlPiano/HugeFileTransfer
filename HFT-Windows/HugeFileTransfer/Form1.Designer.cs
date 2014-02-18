@@ -28,6 +28,7 @@
         /// </summary>
         private void InitializeComponent()
         {
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             this.bgTransfer = new System.ComponentModel.BackgroundWorker();
             this.tabOperationMode = new System.Windows.Forms.TabControl();
             this.tabUpload = new System.Windows.Forms.TabPage();
@@ -51,6 +52,9 @@
             this.btnUpload = new System.Windows.Forms.Button();
             this.tabDownload = new System.Windows.Forms.TabPage();
             this.barraEstado = new System.Windows.Forms.StatusStrip();
+            this.toolStripSelectServer = new System.Windows.Forms.ToolStripDropDownButton();
+            this.menuItemServidorNova = new System.Windows.Forms.ToolStripMenuItem();
+            this.menuItemServidorLocal = new System.Windows.Forms.ToolStripMenuItem();
             this.dlgOpenFile = new System.Windows.Forms.OpenFileDialog();
             this.grpServerFiles = new System.Windows.Forms.GroupBox();
             this.lstServerFiles = new System.Windows.Forms.TreeView();
@@ -59,6 +63,7 @@
             this.tabUpload.SuspendLayout();
             this.grpResult.SuspendLayout();
             this.tableLayoutPanel1.SuspendLayout();
+            this.barraEstado.SuspendLayout();
             this.grpServerFiles.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -290,6 +295,7 @@
             // btnUpload
             // 
             this.btnUpload.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnUpload.Enabled = false;
             this.btnUpload.Location = new System.Drawing.Point(494, 32);
             this.btnUpload.Name = "btnUpload";
             this.btnUpload.Size = new System.Drawing.Size(84, 20);
@@ -310,10 +316,37 @@
             // 
             // barraEstado
             // 
+            this.barraEstado.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.toolStripSelectServer});
             this.barraEstado.Location = new System.Drawing.Point(0, 416);
             this.barraEstado.Name = "barraEstado";
             this.barraEstado.Size = new System.Drawing.Size(616, 22);
             this.barraEstado.TabIndex = 4;
+            // 
+            // toolStripSelectServer
+            // 
+            this.toolStripSelectServer.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
+            this.toolStripSelectServer.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.menuItemServidorNova,
+            this.menuItemServidorLocal});
+            this.toolStripSelectServer.Image = ((System.Drawing.Image)(resources.GetObject("toolStripSelectServer.Image")));
+            this.toolStripSelectServer.ImageTransparentColor = System.Drawing.Color.Magenta;
+            this.toolStripSelectServer.Name = "toolStripSelectServer";
+            this.toolStripSelectServer.Size = new System.Drawing.Size(29, 20);
+            // 
+            // menuItemServidorNova
+            // 
+            this.menuItemServidorNova.Name = "menuItemServidorNova";
+            this.menuItemServidorNova.Size = new System.Drawing.Size(181, 22);
+            this.menuItemServidorNova.Text = "Servidor en NOVA";
+            this.menuItemServidorNova.Click += new System.EventHandler(this.menuItemServidorNova_Click);
+            // 
+            // menuItemServidorLocal
+            // 
+            this.menuItemServidorLocal.Name = "menuItemServidorLocal";
+            this.menuItemServidorLocal.Size = new System.Drawing.Size(181, 22);
+            this.menuItemServidorLocal.Text = "Servidor en red local";
+            this.menuItemServidorLocal.Click += new System.EventHandler(this.menuItemServidorLocal_Click);
             // 
             // grpServerFiles
             // 
@@ -362,6 +395,8 @@
             this.tabUpload.PerformLayout();
             this.grpResult.ResumeLayout(false);
             this.tableLayoutPanel1.ResumeLayout(false);
+            this.barraEstado.ResumeLayout(false);
+            this.barraEstado.PerformLayout();
             this.grpServerFiles.ResumeLayout(false);
             this.ResumeLayout(false);
             this.PerformLayout();
@@ -397,6 +432,9 @@
         private System.Windows.Forms.ProgressBar progBarUpload;
         private System.ComponentModel.BackgroundWorker bgMonitor;
         private System.Windows.Forms.ListBox lstResult;
+        private System.Windows.Forms.ToolStripDropDownButton toolStripSelectServer;
+        private System.Windows.Forms.ToolStripMenuItem menuItemServidorNova;
+        private System.Windows.Forms.ToolStripMenuItem menuItemServidorLocal;
     }
 }
 
